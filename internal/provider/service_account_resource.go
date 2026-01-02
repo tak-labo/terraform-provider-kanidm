@@ -28,8 +28,9 @@ type serviceAccountResource struct {
 }
 
 type serviceAccountResourceModel struct {
-	ID       types.String `tfsdk:"id"`
-	APIToken types.String `tfsdk:"api_token"`
+	ID          types.String `tfsdk:"id"`
+	DisplayName types.String `tfsdk:"displayname"`
+	APIToken    types.String `tfsdk:"api_token"`
 }
 
 func (r *serviceAccountResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -69,6 +70,10 @@ Store it securely immediately after creation.`,
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
+			"displayname": schema.StringAttribute{
+				MarkdownDescription: "Display name for the service account. This is shown in the Kanidm UI and logs.",
+				Required:            true,
+			},
 			"api_token": schema.StringAttribute{
 				MarkdownDescription: "API token for the service account. **Only available during creation.** " +
 					"Store this token securely as it cannot be retrieved later.",
@@ -104,11 +109,12 @@ func (r *serviceAccountResource) Create(ctx context.Context, req resource.Create
 	}
 
 	tflog.Debug(ctx, "Creating service account", map[string]any{
-		"id": plan.ID.ValueString(),
+		"id":          plan.ID.ValueString(),
+		"displayname": plan.DisplayName.ValueString(),
 	})
 
 	// Create the service account (this also generates an initial API token)
-	sa, err := r.client.CreateServiceAccount(ctx, plan.ID.ValueString())
+	sa, err := r.client.CreateServiceAccount(ctx, plan.ID.ValueString(), plan.DisplayName.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Creating Service Account",
@@ -119,10 +125,12 @@ func (r *serviceAccountResource) Create(ctx context.Context, req resource.Create
 
 	// Map response to state
 	plan.ID = types.StringValue(sa.ID)
+	plan.DisplayName = types.StringValue(sa.DisplayName)
 	plan.APIToken = types.StringValue(sa.APIToken)
 
 	tflog.Debug(ctx, "Service account created successfully", map[string]any{
-		"id": plan.ID.ValueString(),
+		"id":          plan.ID.ValueString(),
+		"displayname": plan.DisplayName.ValueString(),
 	})
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
@@ -159,6 +167,7 @@ func (r *serviceAccountResource) Read(ctx context.Context, req resource.ReadRequ
 
 	// Update state with current values
 	state.ID = types.StringValue(sa.ID)
+	state.DisplayName = types.StringValue(sa.DisplayName)
 	// API token is write-only and cannot be read back, preserve existing state value
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
@@ -177,8 +186,25 @@ func (r *serviceAccountResource) Update(ctx context.Context, req resource.Update
 		"id": plan.ID.ValueString(),
 	})
 
-	// Service accounts have no updatable attributes (ID requires replacement)
-	// Just preserve state values
+	// Check if displayname has changed
+	if !plan.DisplayName.Equal(state.DisplayName) {
+		tflog.Debug(ctx, "Displayname changed, updating service account", map[string]any{
+			"id":              plan.ID.ValueString(),
+			"old_displayname": state.DisplayName.ValueString(),
+			"new_displayname": plan.DisplayName.ValueString(),
+		})
+
+		err := r.client.UpdateServiceAccount(ctx, plan.ID.ValueString(), plan.DisplayName.ValueString())
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error Updating Service Account",
+				"Could not update service account displayname: "+err.Error(),
+			)
+			return
+		}
+	}
+
+	// Preserve API token (cannot be updated)
 	plan.APIToken = state.APIToken
 
 	tflog.Debug(ctx, "Service account updated successfully", map[string]any{

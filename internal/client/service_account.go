@@ -7,15 +7,22 @@ import (
 
 // ServiceAccount represents a Kanidm service account
 type ServiceAccount struct {
-	ID       string
-	APIToken string // Only populated on creation
+	ID          string
+	DisplayName string
+	APIToken    string // Only populated on creation
 }
 
 // CreateServiceAccount creates a new service account
-func (c *Client) CreateServiceAccount(ctx context.Context, name string) (*ServiceAccount, error) {
-	req := NewCreateRequest(map[string]any{
+func (c *Client) CreateServiceAccount(ctx context.Context, name, displayName string) (*ServiceAccount, error) {
+	attrs := map[string]any{
 		"name": []string{name},
-	})
+	}
+
+	if displayName != "" {
+		attrs["displayname"] = []string{displayName}
+	}
+
+	req := NewCreateRequest(attrs)
 
 	resp, err := c.doRequest(ctx, "POST", "/v1/service_account", req)
 	if err != nil {
@@ -24,7 +31,8 @@ func (c *Client) CreateServiceAccount(ctx context.Context, name string) (*Servic
 	defer func() { _ = resp.Body.Close() }()
 
 	sa := &ServiceAccount{
-		ID: name,
+		ID:          name,
+		DisplayName: displayName,
 	}
 
 	// Generate initial API token
@@ -51,7 +59,8 @@ func (c *Client) GetServiceAccount(ctx context.Context, id string) (*ServiceAcco
 	}
 
 	return &ServiceAccount{
-		ID: entry.GetString("name"),
+		ID:          entry.GetString("name"),
+		DisplayName: entry.GetString("displayname"),
 		// Note: API tokens are not returned in GET responses
 	}, nil
 }
@@ -89,8 +98,9 @@ func (c *Client) DeleteServiceAccount(ctx context.Context, id string) error {
 // GenerateServiceAccountToken generates a new API token for the service account
 func (c *Client) GenerateServiceAccountToken(ctx context.Context, id, label string, expiry *int64) (string, error) {
 	req := map[string]any{
-		"label":  label,
-		"expiry": nil,
+		"label":      label,
+		"expiry":     nil,
+		"read_write": true,
 	}
 
 	if expiry != nil {

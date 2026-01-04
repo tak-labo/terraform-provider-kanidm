@@ -257,6 +257,18 @@ func (r *personResource) Create(ctx context.Context, req resource.CreateRequest,
 
 	// Password is write-only, keep the planned value but don't try to read it back
 
+	// Ensure credential_reset_token fields are properly set with defaults if not already set
+	if plan.GenerateCredentialResetToken.IsNull() || plan.GenerateCredentialResetToken.IsUnknown() {
+		plan.GenerateCredentialResetToken = types.BoolValue(false)
+	}
+	if plan.CredentialResetTokenTTL.IsNull() || plan.CredentialResetTokenTTL.IsUnknown() {
+		plan.CredentialResetTokenTTL = types.Int64Value(3600)
+	}
+	// If credential_reset_token wasn't generated, ensure it's null not unknown
+	if plan.CredentialResetToken.IsUnknown() {
+		plan.CredentialResetToken = types.StringNull()
+	}
+
 	tflog.Debug(ctx, "Person created successfully", map[string]any{
 		"id": plan.ID.ValueString(),
 	})
@@ -309,7 +321,18 @@ func (r *personResource) Read(ctx context.Context, req resource.ReadRequest, res
 		state.Mail = types.ListNull(types.StringType)
 	}
 
-	// Password and credential_reset_token are write-only, preserve existing state values
+	// Password is write-only and not readable from API, preserve existing state value
+	// credential_reset_token fields should use defaults when not explicitly set
+	if state.GenerateCredentialResetToken.IsNull() || state.GenerateCredentialResetToken.IsUnknown() {
+		state.GenerateCredentialResetToken = types.BoolValue(false)
+	}
+	if state.CredentialResetTokenTTL.IsNull() || state.CredentialResetTokenTTL.IsUnknown() {
+		state.CredentialResetTokenTTL = types.Int64Value(3600)
+	}
+	// credential_reset_token is only set during Create/Update when generated, otherwise null
+	if state.CredentialResetToken.IsUnknown() {
+		state.CredentialResetToken = types.StringNull()
+	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
@@ -396,6 +419,18 @@ func (r *personResource) Update(ctx context.Context, req resource.UpdateRequest,
 		plan.Mail = mailList
 	} else {
 		plan.Mail = types.ListNull(types.StringType)
+	}
+
+	// Ensure credential_reset_token fields are properly set
+	if plan.GenerateCredentialResetToken.IsNull() || plan.GenerateCredentialResetToken.IsUnknown() {
+		plan.GenerateCredentialResetToken = types.BoolValue(false)
+	}
+	if plan.CredentialResetTokenTTL.IsNull() || plan.CredentialResetTokenTTL.IsUnknown() {
+		plan.CredentialResetTokenTTL = types.Int64Value(3600)
+	}
+	// credential_reset_token is only set during Update when generated, otherwise null
+	if plan.CredentialResetToken.IsUnknown() {
+		plan.CredentialResetToken = types.StringNull()
 	}
 
 	tflog.Debug(ctx, "Person updated successfully", map[string]any{

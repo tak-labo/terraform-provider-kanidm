@@ -28,12 +28,14 @@ type oauth2BasicResource struct {
 }
 
 type oauth2BasicResourceModel struct {
-	Name         types.String `tfsdk:"name"`
-	DisplayName  types.String `tfsdk:"displayname"`
-	Origin       types.String `tfsdk:"origin"`
-	RedirectURIs types.List   `tfsdk:"redirect_uris"`
-	ScopeMaps    types.Set    `tfsdk:"scope_map"`
-	ClientSecret types.String `tfsdk:"client_secret"`
+	Name                           types.String `tfsdk:"name"`
+	DisplayName                    types.String `tfsdk:"displayname"`
+	Origin                         types.String `tfsdk:"origin"`
+	RedirectURIs                   types.List   `tfsdk:"redirect_uris"`
+	ScopeMaps                      types.Set    `tfsdk:"scope_map"`
+	ClientSecret                   types.String `tfsdk:"client_secret"`
+	AllowInsecureClientDisablePKCE types.Bool   `tfsdk:"allow_insecure_client_disable_pkce"`
+	JwtLegacyCryptoEnable          types.Bool   `tfsdk:"jwt_legacy_crypto_enable"`
 }
 
 type scopeMapModel struct {
@@ -111,6 +113,16 @@ Store it securely immediately after creation. You can regenerate it using the Ka
 					"Store this secret securely as it cannot be retrieved later.",
 				Computed:  true,
 				Sensitive: true,
+			},
+			"allow_insecure_client_disable_pkce": schema.BoolAttribute{
+				MarkdownDescription: "Allow this client to disable PKCE. Use only for clients that do not support PKCE (e.g. Omni).",
+				Optional:            true,
+				Computed:            true,
+			},
+			"jwt_legacy_crypto_enable": schema.BoolAttribute{
+				MarkdownDescription: "Enable legacy RS256 JWT signing. Use for clients that do not support ES256 (e.g. python-social-auth).",
+				Optional:            true,
+				Computed:            true,
 			},
 		},
 		Blocks: map[string]schema.Block{
@@ -193,7 +205,19 @@ func (r *oauth2BasicResource) Create(ctx context.Context, req resource.CreateReq
 		"redirect_count": len(redirectURIs),
 	})
 
-	if err := r.client.UpdateOAuth2Client(ctx, oauth2Client.Name, plan.DisplayName.ValueString(), plan.Origin.ValueString(), redirectURIs); err != nil {
+	var allowInsecureDisablePKCE *bool
+	if !plan.AllowInsecureClientDisablePKCE.IsNull() && !plan.AllowInsecureClientDisablePKCE.IsUnknown() {
+		v := plan.AllowInsecureClientDisablePKCE.ValueBool()
+		allowInsecureDisablePKCE = &v
+	}
+
+	var jwtLegacyCryptoEnable *bool
+	if !plan.JwtLegacyCryptoEnable.IsNull() && !plan.JwtLegacyCryptoEnable.IsUnknown() {
+		v := plan.JwtLegacyCryptoEnable.ValueBool()
+		jwtLegacyCryptoEnable = &v
+	}
+
+	if err := r.client.UpdateOAuth2Client(ctx, oauth2Client.Name, plan.DisplayName.ValueString(), plan.Origin.ValueString(), redirectURIs, allowInsecureDisablePKCE, jwtLegacyCryptoEnable); err != nil {
 		resp.Diagnostics.AddError(
 			"Error Setting OAuth2 Configuration",
 			"OAuth2 client was created but configuration could not be set: "+err.Error(),
@@ -260,6 +284,9 @@ func (r *oauth2BasicResource) Create(ctx context.Context, req resource.CreateReq
 
 	// Keep the scope maps from the plan (can't read them back from API in current form)
 	// In a future enhancement, we could parse the scope maps from the API response
+
+	plan.AllowInsecureClientDisablePKCE = types.BoolValue(createdClient.AllowInsecureClientDisablePKCE)
+	plan.JwtLegacyCryptoEnable = types.BoolValue(createdClient.JwtLegacyCryptoEnable)
 
 	tflog.Debug(ctx, "OAuth2 basic client created successfully", map[string]any{
 		"name": plan.Name.ValueString(),
@@ -345,6 +372,9 @@ func (r *oauth2BasicResource) Read(ctx context.Context, req resource.ReadRequest
 
 	// Scope maps preserved from state (can't read them back in current form)
 
+	state.AllowInsecureClientDisablePKCE = types.BoolValue(oauth2Client.AllowInsecureClientDisablePKCE)
+	state.JwtLegacyCryptoEnable = types.BoolValue(oauth2Client.JwtLegacyCryptoEnable)
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -370,6 +400,18 @@ func (r *oauth2BasicResource) Update(ctx context.Context, req resource.UpdateReq
 		}
 	}
 
+	var allowInsecureDisablePKCE *bool
+	if !plan.AllowInsecureClientDisablePKCE.IsNull() && !plan.AllowInsecureClientDisablePKCE.IsUnknown() {
+		v := plan.AllowInsecureClientDisablePKCE.ValueBool()
+		allowInsecureDisablePKCE = &v
+	}
+
+	var jwtLegacyCryptoEnable *bool
+	if !plan.JwtLegacyCryptoEnable.IsNull() && !plan.JwtLegacyCryptoEnable.IsUnknown() {
+		v := plan.JwtLegacyCryptoEnable.ValueBool()
+		jwtLegacyCryptoEnable = &v
+	}
+
 	// Update OAuth2 client (displayname, origin, redirect URIs)
 	if err := r.client.UpdateOAuth2Client(
 		ctx,
@@ -377,6 +419,8 @@ func (r *oauth2BasicResource) Update(ctx context.Context, req resource.UpdateReq
 		plan.DisplayName.ValueString(),
 		plan.Origin.ValueString(),
 		redirectURIs,
+		allowInsecureDisablePKCE,
+		jwtLegacyCryptoEnable,
 	); err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating OAuth2 Basic Client",
@@ -474,6 +518,9 @@ func (r *oauth2BasicResource) Update(ctx context.Context, req resource.UpdateReq
 
 	// Preserve client secret from state (cannot be read back from API)
 	plan.ClientSecret = state.ClientSecret
+
+	plan.AllowInsecureClientDisablePKCE = types.BoolValue(updatedClient.AllowInsecureClientDisablePKCE)
+	plan.JwtLegacyCryptoEnable = types.BoolValue(updatedClient.JwtLegacyCryptoEnable)
 
 	tflog.Debug(ctx, "OAuth2 basic client updated successfully", map[string]any{
 		"name": plan.Name.ValueString(),

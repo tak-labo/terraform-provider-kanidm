@@ -36,6 +36,7 @@ type oauth2BasicResourceModel struct {
 	ClientSecret                   types.String `tfsdk:"client_secret"`
 	AllowInsecureClientDisablePKCE types.Bool   `tfsdk:"allow_insecure_client_disable_pkce"`
 	JwtLegacyCryptoEnable          types.Bool   `tfsdk:"jwt_legacy_crypto_enable"`
+	PreferShortUsername            types.Bool   `tfsdk:"prefer_short_username"`
 }
 
 type scopeMapModel struct {
@@ -121,6 +122,11 @@ Store it securely immediately after creation. You can regenerate it using the Ka
 			},
 			"jwt_legacy_crypto_enable": schema.BoolAttribute{
 				MarkdownDescription: "Enable legacy RS256 JWT signing. Use for clients that do not support ES256 (e.g. python-social-auth).",
+				Optional:            true,
+				Computed:            true,
+			},
+			"prefer_short_username": schema.BoolAttribute{
+				MarkdownDescription: "Return short username (e.g. 'nagafuchi') instead of SPN (e.g. 'nagafuchi@idm.cosmo.cloud') in the preferred_username OIDC claim.",
 				Optional:            true,
 				Computed:            true,
 			},
@@ -217,7 +223,13 @@ func (r *oauth2BasicResource) Create(ctx context.Context, req resource.CreateReq
 		jwtLegacyCryptoEnable = &v
 	}
 
-	if err := r.client.UpdateOAuth2Client(ctx, oauth2Client.Name, plan.DisplayName.ValueString(), plan.Origin.ValueString(), redirectURIs, allowInsecureDisablePKCE, jwtLegacyCryptoEnable); err != nil {
+	var preferShortUsername *bool
+	if !plan.PreferShortUsername.IsNull() && !plan.PreferShortUsername.IsUnknown() {
+		v := plan.PreferShortUsername.ValueBool()
+		preferShortUsername = &v
+	}
+
+	if err := r.client.UpdateOAuth2Client(ctx, oauth2Client.Name, plan.DisplayName.ValueString(), plan.Origin.ValueString(), redirectURIs, allowInsecureDisablePKCE, jwtLegacyCryptoEnable, preferShortUsername); err != nil {
 		resp.Diagnostics.AddError(
 			"Error Setting OAuth2 Configuration",
 			"OAuth2 client was created but configuration could not be set: "+err.Error(),
@@ -287,6 +299,7 @@ func (r *oauth2BasicResource) Create(ctx context.Context, req resource.CreateReq
 
 	plan.AllowInsecureClientDisablePKCE = types.BoolValue(createdClient.AllowInsecureClientDisablePKCE)
 	plan.JwtLegacyCryptoEnable = types.BoolValue(createdClient.JwtLegacyCryptoEnable)
+	plan.PreferShortUsername = types.BoolValue(createdClient.PreferShortUsername)
 
 	tflog.Debug(ctx, "OAuth2 basic client created successfully", map[string]any{
 		"name": plan.Name.ValueString(),
@@ -374,6 +387,7 @@ func (r *oauth2BasicResource) Read(ctx context.Context, req resource.ReadRequest
 
 	state.AllowInsecureClientDisablePKCE = types.BoolValue(oauth2Client.AllowInsecureClientDisablePKCE)
 	state.JwtLegacyCryptoEnable = types.BoolValue(oauth2Client.JwtLegacyCryptoEnable)
+	state.PreferShortUsername = types.BoolValue(oauth2Client.PreferShortUsername)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
@@ -412,6 +426,12 @@ func (r *oauth2BasicResource) Update(ctx context.Context, req resource.UpdateReq
 		jwtLegacyCryptoEnable = &v
 	}
 
+	var preferShortUsername *bool
+	if !plan.PreferShortUsername.IsNull() && !plan.PreferShortUsername.IsUnknown() {
+		v := plan.PreferShortUsername.ValueBool()
+		preferShortUsername = &v
+	}
+
 	// Update OAuth2 client (displayname, origin, redirect URIs)
 	if err := r.client.UpdateOAuth2Client(
 		ctx,
@@ -421,6 +441,7 @@ func (r *oauth2BasicResource) Update(ctx context.Context, req resource.UpdateReq
 		redirectURIs,
 		allowInsecureDisablePKCE,
 		jwtLegacyCryptoEnable,
+		preferShortUsername,
 	); err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating OAuth2 Basic Client",
@@ -521,6 +542,7 @@ func (r *oauth2BasicResource) Update(ctx context.Context, req resource.UpdateReq
 
 	plan.AllowInsecureClientDisablePKCE = types.BoolValue(updatedClient.AllowInsecureClientDisablePKCE)
 	plan.JwtLegacyCryptoEnable = types.BoolValue(updatedClient.JwtLegacyCryptoEnable)
+	plan.PreferShortUsername = types.BoolValue(updatedClient.PreferShortUsername)
 
 	tflog.Debug(ctx, "OAuth2 basic client updated successfully", map[string]any{
 		"name": plan.Name.ValueString(),

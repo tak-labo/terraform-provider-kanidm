@@ -17,6 +17,7 @@ type OAuth2Client struct {
 	ClientSecret                   string // Only for basic/confidential clients, populated on creation
 	IsPublic                       bool
 	AllowInsecureClientDisablePKCE bool
+	JwtLegacyCryptoEnable          bool
 }
 
 // CreateOAuth2BasicClient creates a new OAuth2 basic (confidential) client
@@ -108,6 +109,11 @@ func (c *Client) GetOAuth2Client(ctx context.Context, name string) (*OAuth2Clien
 		allowInsecureDisablePKCE = true
 	}
 
+	jwtLegacyCryptoEnable := false
+	if vals := entry.GetStringSlice("oauth2_jwt_legacy_crypto_enable"); len(vals) > 0 && vals[0] == "true" {
+		jwtLegacyCryptoEnable = true
+	}
+
 	// Read allowed redirect URIs from oauth2_rs_origin (multi-value).
 	// Strip trailing slash only for root URLs (e.g. https://example.com/) to stay
 	// consistent with the write path, which adds a trailing slash to root URLs.
@@ -129,12 +135,13 @@ func (c *Client) GetOAuth2Client(ctx context.Context, name string) (*OAuth2Clien
 		ClientID:                       clientName,
 		IsPublic:                       isPublic,
 		AllowInsecureClientDisablePKCE: allowInsecureDisablePKCE,
+		JwtLegacyCryptoEnable:          jwtLegacyCryptoEnable,
 		// Note: Client secret is never returned in GET responses
 	}, nil
 }
 
 // UpdateOAuth2Client updates an OAuth2 client
-func (c *Client) UpdateOAuth2Client(ctx context.Context, name string, displayName, origin string, redirectURIs []string, allowInsecureDisablePKCE *bool) error {
+func (c *Client) UpdateOAuth2Client(ctx context.Context, name string, displayName, origin string, redirectURIs []string, allowInsecureDisablePKCE *bool, jwtLegacyCryptoEnable *bool) error {
 	attrs := make(map[string]any)
 
 	if displayName != "" {
@@ -168,6 +175,14 @@ func (c *Client) UpdateOAuth2Client(ctx context.Context, name string, displayNam
 			attrs["oauth2_allow_insecure_client_disable_pkce"] = []string{"true"}
 		} else {
 			attrs["oauth2_allow_insecure_client_disable_pkce"] = []string{"false"}
+		}
+	}
+
+	if jwtLegacyCryptoEnable != nil {
+		if *jwtLegacyCryptoEnable {
+			attrs["oauth2_jwt_legacy_crypto_enable"] = []string{"true"}
+		} else {
+			attrs["oauth2_jwt_legacy_crypto_enable"] = []string{"false"}
 		}
 	}
 

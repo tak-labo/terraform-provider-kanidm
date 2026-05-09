@@ -3,18 +3,20 @@ package client
 import (
 	"context"
 	"fmt"
+	"strings"
 )
 
 // OAuth2Client represents a Kanidm OAuth2 resource server
 type OAuth2Client struct {
-	Name         string
-	DisplayName  string
-	Origin       string
-	RedirectURIs []string
-	ScopeMaps    map[string][]string
-	ClientID     string // Computed
-	ClientSecret string // Only for basic/confidential clients, populated on creation
-	IsPublic     bool
+	Name                           string
+	DisplayName                    string
+	Origin                         string
+	RedirectURIs                   []string
+	ScopeMaps                      map[string][]string
+	ClientID                       string // Computed
+	ClientSecret                   string // Only for basic/confidential clients, populated on creation
+	IsPublic                       bool
+	AllowInsecureClientDisablePKCE bool
 }
 
 // CreateOAuth2BasicClient creates a new OAuth2 basic (confidential) client
@@ -94,26 +96,45 @@ func (c *Client) GetOAuth2Client(ctx context.Context, name string) (*OAuth2Clien
 		clientName = entry.GetString("oauth2_rs_name")
 	}
 
-	// Get origin and normalize by removing trailing slash if present
-	// (Kanidm adds trailing slash, but Terraform configs typically don't have it)
-	origin := entry.GetString("oauth2_rs_origin")
+	// Read portal landing URL (single-value) as "origin"
+	// oauth2_rs_origin_landing = portal link URL shown in Kanidm application portal
+	origin := entry.GetString("oauth2_rs_origin_landing")
 	if len(origin) > 0 && origin[len(origin)-1] == '/' {
 		origin = origin[:len(origin)-1]
 	}
 
+	allowInsecureDisablePKCE := false
+	if vals := entry.GetStringSlice("oauth2_allow_insecure_client_disable_pkce"); len(vals) > 0 && vals[0] == "true" {
+		allowInsecureDisablePKCE = true
+	}
+
+	// Read allowed redirect URIs from oauth2_rs_origin (multi-value).
+	// Strip trailing slash only for root URLs (e.g. https://example.com/) to stay
+	// consistent with the write path, which adds a trailing slash to root URLs.
+	// Path URIs (e.g. https://example.com/callback/) are preserved as-is.
+	rawRedirectURIs := entry.GetStringSlice("oauth2_rs_origin")
+	redirectURIs := make([]string, len(rawRedirectURIs))
+	for i, u := range rawRedirectURIs {
+		if len(u) > 0 && u[len(u)-1] == '/' && strings.Count(u, "/") == 3 {
+			u = u[:len(u)-1]
+		}
+		redirectURIs[i] = u
+	}
+
 	return &OAuth2Client{
-		Name:         clientName,
-		DisplayName:  entry.GetString("displayname"),
-		Origin:       origin,
-		RedirectURIs: entry.GetStringSlice("oauth2_rs_origin_landing"),
-		ClientID:     clientName,
-		IsPublic:     isPublic,
+		Name:                           clientName,
+		DisplayName:                    entry.GetString("displayname"),
+		Origin:                         origin,
+		RedirectURIs:                   redirectURIs,
+		ClientID:                       clientName,
+		IsPublic:                       isPublic,
+		AllowInsecureClientDisablePKCE: allowInsecureDisablePKCE,
 		// Note: Client secret is never returned in GET responses
 	}, nil
 }
 
 // UpdateOAuth2Client updates an OAuth2 client
-func (c *Client) UpdateOAuth2Client(ctx context.Context, name string, displayName, origin string, redirectURIs []string) error {
+func (c *Client) UpdateOAuth2Client(ctx context.Context, name string, displayName, origin string, redirectURIs []string, allowInsecureDisablePKCE *bool) error {
 	attrs := make(map[string]any)
 
 	if displayName != "" {
@@ -121,11 +142,33 @@ func (c *Client) UpdateOAuth2Client(ctx context.Context, name string, displayNam
 	}
 
 	if origin != "" {
-		attrs["oauth2_rs_origin"] = []string{origin}
+		// oauth2_rs_origin_landing = portal landing URL (single-value)
+		landingURL := origin
+		if strings.Count(landingURL, "/") == 2 {
+			landingURL = landingURL + "/"
+		}
+		attrs["oauth2_rs_origin_landing"] = []string{landingURL}
 	}
 
 	if redirectURIs != nil {
-		attrs["oauth2_rs_origin_landing"] = redirectURIs
+		// oauth2_rs_origin = allowed redirect URIs (multi-value)
+		// Root URLs like https://example.com must be sent as https://example.com/
+		normalized := make([]string, len(redirectURIs))
+		for i, u := range redirectURIs {
+			if strings.Count(u, "/") == 2 {
+				u = u + "/"
+			}
+			normalized[i] = u
+		}
+		attrs["oauth2_rs_origin"] = normalized
+	}
+
+	if allowInsecureDisablePKCE != nil {
+		if *allowInsecureDisablePKCE {
+			attrs["oauth2_allow_insecure_client_disable_pkce"] = []string{"true"}
+		} else {
+			attrs["oauth2_allow_insecure_client_disable_pkce"] = []string{"false"}
+		}
 	}
 
 	req := NewUpdateRequest(attrs)

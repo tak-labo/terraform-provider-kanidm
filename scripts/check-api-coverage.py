@@ -5,7 +5,9 @@ Outputs Markdown suitable for GitHub Actions Summary.
 """
 
 import json
+import os
 import sys
+import urllib.request
 from pathlib import Path
 
 import yaml
@@ -78,6 +80,32 @@ def main():
         print("|---|---|")
         for method, path in not_implemented:
             print(f"| `{method}` | `{path}` |")
+
+    update_gist(pct)
+
+def update_gist(pct: float) -> None:
+    gist_id = os.environ.get("GIST_ID")
+    token = os.environ.get("GIST_SECRET")
+    if not gist_id or not token:
+        return
+
+    color = "brightgreen" if pct >= 80 else "green" if pct >= 60 else "yellow" if pct >= 40 else "orange"
+    badge = {
+        "schemaVersion": 1,
+        "label": "API Coverage",
+        "message": f"{pct:.1f}%",
+        "color": color,
+    }
+    data = json.dumps({"files": {"badge.json": {"content": json.dumps(badge)}}}).encode()
+    req = urllib.request.Request(
+        f"https://api.github.com/gists/{gist_id}",
+        data=data,
+        method="PATCH",
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+    )
+    urllib.request.urlopen(req)
+    print(f"\n> Badge updated: {pct:.1f}%", file=sys.stderr)
+
 
 if __name__ == "__main__":
     main()

@@ -54,6 +54,9 @@ jobs:
           go tool cover -func=coverage.txt >> $GITHUB_STEP_SUMMARY
 
       - name: API Coverage
+        env:
+          GIST_ID: ${{ secrets.GIST_ID }}
+          GIST_SECRET: ${{ secrets.GIST_SECRET }}
         run: |
           pip install uv -q
           uv run --with pyyaml python3 scripts/check-api-coverage.py >> $GITHUB_STEP_SUMMARY

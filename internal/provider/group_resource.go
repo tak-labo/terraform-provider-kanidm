@@ -68,8 +68,6 @@ func (r *groupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 	}
 }
 
-
-
 func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan groupResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)

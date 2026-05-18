@@ -1,0 +1,41 @@
+# Kanidm API coverage declaration.
+# Update this file when implementing new endpoints.
+# Run: python3 scripts/check-api-coverage.py
+
+implemented:
+  # person
+  - { method: GET,    path: /v1/person }
+  - { method: POST,   path: /v1/person }
+  - { method: GET,    path: "/v1/person/{id}" }
+  - { method: PATCH,  path: "/v1/person/{id}" }
+  - { method: DELETE, path: "/v1/person/{id}" }
+  - { method: GET,    path: "/v1/person/{id}/_credential/_update_intent" }
+  - { method: GET,    path: "/v1/person/{id}/_credential/_update_intent/{ttl}" }
+  - { method: POST,   path: "/v1/person/{id}/_unix" }
+
+  # group
+  - { method: GET,    path: /v1/group }
+  - { method: POST,   path: /v1/group }
+  - { method: GET,    path: "/v1/group/{id}" }
+  - { method: PATCH,  path: "/v1/group/{id}" }
+  - { method: DELETE, path: "/v1/group/{id}" }
+  - { method: POST,   path: "/v1/group/{id}/_unix" }
+
+  # service_account
+  - { method: GET,    path: /v1/service_account }
+  - { method: POST,   path: /v1/service_account }
+  - { method: GET,    path: "/v1/service_account/{id}" }
+  - { method: PATCH,  path: "/v1/service_account/{id}" }
+  - { method: DELETE, path: "/v1/service_account/{id}" }
+  - { method: GET,    path: "/v1/service_account/{id}/_api_token" }
+  - { method: POST,   path: "/v1/service_account/{id}/_api_token" }
+
+  # oauth2
+  - { method: POST,   path: /v1/oauth2/_basic }
+  - { method: POST,   path: /v1/oauth2/_public }
+  - { method: GET,    path: "/v1/oauth2/{rs_name}" }
+  - { method: PATCH,  path: "/v1/oauth2/{rs_name}" }
+  - { method: DELETE, path: "/v1/oauth2/{rs_name}" }
+  - { method: GET,    path: "/v1/oauth2/{rs_name}/_basic_secret" }
+  - { method: POST,   path: "/v1/oauth2/{rs_name}/_scopemap/{group}" }
+  - { method: DELETE, path: "/v1/oauth2/{rs_name}/_scopemap/{group}" }

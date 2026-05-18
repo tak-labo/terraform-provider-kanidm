@@ -75,7 +75,7 @@ resource "kanidm_oauth2_basic" "simple_app" {
 }
 
 # Example: Imported existing OAuth2 client
-# Import command: terraform import kanidm_oauth2_basic.existing client_name
+# Import command: tofu import kanidm_oauth2_basic.existing client_name
 # Note: Client secret will be automatically retrieved from Kanidm after import
 resource "kanidm_oauth2_basic" "existing" {
   name        = "existing-client"

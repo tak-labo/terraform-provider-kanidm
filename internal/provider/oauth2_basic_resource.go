@@ -11,7 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/ssoriche/terraform-provider-kanidm/internal/client"
+	"github.com/tak-labo/terraform-provider-kanidm/internal/client"
 )
 
 var (
@@ -24,7 +24,7 @@ func NewOAuth2BasicResource() resource.Resource {
 }
 
 type oauth2BasicResource struct {
-	client *client.Client
+	resourceWithClient
 }
 
 type oauth2BasicResourceModel struct {
@@ -50,43 +50,11 @@ func (r *oauth2BasicResource) Metadata(_ context.Context, req resource.MetadataR
 
 func (r *oauth2BasicResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: `Manages a Kanidm OAuth2 basic (confidential) client.
-
-OAuth2 basic clients are used for server-side applications that can securely store a client secret.
-The client secret is automatically generated on creation and can be used for OAuth2/OIDC authentication.
-
-## Example Usage
-
-` + "```hcl" + `
-resource "kanidm_oauth2_basic" "grafana" {
-  name        = "grafana"
-  displayname = "Grafana"
-  origin      = "https://grafana.example.com"
-
-  redirect_uris = [
-    "https://grafana.example.com/login/generic_oauth"
-  ]
-
-  scope_map {
-    group  = "admins"
-    scopes = ["openid", "profile", "email", "groups"]
-  }
-
-  scope_map {
-    group  = "developers"
-    scopes = ["openid", "profile", "email"]
-  }
-}
-
-# Store the client secret in 1Password or another secret manager
-output "grafana_client_secret" {
-  value     = kanidm_oauth2_basic.grafana.client_secret
-  sensitive = true
-}
-` + "```" + `
-
-**Important:** The client secret is only available during creation and cannot be recovered later.
-Store it securely immediately after creation. You can regenerate it using the Kanidm CLI if needed.`,
+		MarkdownDescription: "Manages a Kanidm OAuth2 basic (confidential) client.\n\n" +
+			"OAuth2 basic clients are used for server-side applications that can securely store a client secret. " +
+			"The client secret is automatically generated on creation.\n\n" +
+			"**Important:** The client secret is only available during creation and cannot be recovered later. " +
+			"Store it securely immediately after creation.",
 
 		Attributes: map[string]schema.Attribute{
 			"name": schema.StringAttribute{
@@ -153,23 +121,6 @@ Store it securely immediately after creation. You can regenerate it using the Ka
 	}
 }
 
-func (r *oauth2BasicResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
-	}
-
-	c, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Resource Configure Type",
-			"Expected *client.Client. Please report this issue to the provider developers.",
-		)
-		return
-	}
-
-	r.client = c
-}
-
 func (r *oauth2BasicResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan oauth2BasicResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -211,25 +162,7 @@ func (r *oauth2BasicResource) Create(ctx context.Context, req resource.CreateReq
 		"redirect_count": len(redirectURIs),
 	})
 
-	var allowInsecureDisablePKCE *bool
-	if !plan.AllowInsecureClientDisablePKCE.IsNull() && !plan.AllowInsecureClientDisablePKCE.IsUnknown() {
-		v := plan.AllowInsecureClientDisablePKCE.ValueBool()
-		allowInsecureDisablePKCE = &v
-	}
-
-	var jwtLegacyCryptoEnable *bool
-	if !plan.JwtLegacyCryptoEnable.IsNull() && !plan.JwtLegacyCryptoEnable.IsUnknown() {
-		v := plan.JwtLegacyCryptoEnable.ValueBool()
-		jwtLegacyCryptoEnable = &v
-	}
-
-	var preferShortUsername *bool
-	if !plan.PreferShortUsername.IsNull() && !plan.PreferShortUsername.IsUnknown() {
-		v := plan.PreferShortUsername.ValueBool()
-		preferShortUsername = &v
-	}
-
-	if err := r.client.UpdateOAuth2Client(ctx, oauth2Client.Name, plan.DisplayName.ValueString(), plan.Origin.ValueString(), redirectURIs, allowInsecureDisablePKCE, jwtLegacyCryptoEnable, preferShortUsername); err != nil {
+	if err := r.client.UpdateOAuth2Client(ctx, oauth2Client.Name, plan.DisplayName.ValueString(), plan.Origin.ValueString(), redirectURIs, boolPtrFromTypes(plan.AllowInsecureClientDisablePKCE), boolPtrFromTypes(plan.JwtLegacyCryptoEnable), boolPtrFromTypes(plan.PreferShortUsername)); err != nil {
 		resp.Diagnostics.AddError(
 			"Error Setting OAuth2 Configuration",
 			"OAuth2 client was created but configuration could not be set: "+err.Error(),
@@ -414,24 +347,6 @@ func (r *oauth2BasicResource) Update(ctx context.Context, req resource.UpdateReq
 		}
 	}
 
-	var allowInsecureDisablePKCE *bool
-	if !plan.AllowInsecureClientDisablePKCE.IsNull() && !plan.AllowInsecureClientDisablePKCE.IsUnknown() {
-		v := plan.AllowInsecureClientDisablePKCE.ValueBool()
-		allowInsecureDisablePKCE = &v
-	}
-
-	var jwtLegacyCryptoEnable *bool
-	if !plan.JwtLegacyCryptoEnable.IsNull() && !plan.JwtLegacyCryptoEnable.IsUnknown() {
-		v := plan.JwtLegacyCryptoEnable.ValueBool()
-		jwtLegacyCryptoEnable = &v
-	}
-
-	var preferShortUsername *bool
-	if !plan.PreferShortUsername.IsNull() && !plan.PreferShortUsername.IsUnknown() {
-		v := plan.PreferShortUsername.ValueBool()
-		preferShortUsername = &v
-	}
-
 	// Update OAuth2 client (displayname, origin, redirect URIs)
 	if err := r.client.UpdateOAuth2Client(
 		ctx,
@@ -439,9 +354,9 @@ func (r *oauth2BasicResource) Update(ctx context.Context, req resource.UpdateReq
 		plan.DisplayName.ValueString(),
 		plan.Origin.ValueString(),
 		redirectURIs,
-		allowInsecureDisablePKCE,
-		jwtLegacyCryptoEnable,
-		preferShortUsername,
+		boolPtrFromTypes(plan.AllowInsecureClientDisablePKCE),
+		boolPtrFromTypes(plan.JwtLegacyCryptoEnable),
+		boolPtrFromTypes(plan.PreferShortUsername),
 	); err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating OAuth2 Basic Client",
@@ -460,24 +375,10 @@ func (r *oauth2BasicResource) Update(ctx context.Context, req resource.UpdateReq
 	}
 
 	// Build maps for easier comparison
-	oldScopeMapsByGroup := make(map[string][]string)
-	for _, sm := range oldScopeMaps {
-		var scopes []string
-		resp.Diagnostics.Append(sm.Scopes.ElementsAs(ctx, &scopes, false)...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-		oldScopeMapsByGroup[sm.Group.ValueString()] = scopes
-	}
-
-	newScopeMapsByGroup := make(map[string][]string)
-	for _, sm := range newScopeMaps {
-		var scopes []string
-		resp.Diagnostics.Append(sm.Scopes.ElementsAs(ctx, &scopes, false)...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-		newScopeMapsByGroup[sm.Group.ValueString()] = scopes
+	oldScopeMapsByGroup := scopeMapsToGroupMap(ctx, oldScopeMaps, &resp.Diagnostics)
+	newScopeMapsByGroup := scopeMapsToGroupMap(ctx, newScopeMaps, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	// Delete scope maps that are no longer present
@@ -487,6 +388,13 @@ func (r *oauth2BasicResource) Update(ctx context.Context, req resource.UpdateReq
 				"group": group,
 			})
 			if err := r.client.DeleteOAuth2ScopeMap(ctx, plan.Name.ValueString(), group); err != nil {
+				// Ignore 404 - scope map may already be deleted (e.g. after group ID rename)
+				if errors.Is(err, client.ErrNotFound) {
+					tflog.Warn(ctx, "Scope map already deleted, skipping", map[string]any{
+						"group": group,
+					})
+					continue
+				}
 				resp.Diagnostics.AddError(
 					"Error Deleting Scope Map",
 					"Could not delete scope map: "+err.Error(),

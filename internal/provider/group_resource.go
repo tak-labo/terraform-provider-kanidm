@@ -11,7 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/ssoriche/terraform-provider-kanidm/internal/client"
+	"github.com/tak-labo/terraform-provider-kanidm/internal/client"
 )
 
 var (
@@ -24,13 +24,14 @@ func NewGroupResource() resource.Resource {
 }
 
 type groupResource struct {
-	client *client.Client
+	resourceWithClient
 }
 
 type groupResourceModel struct {
 	ID          types.String `tfsdk:"id"`
 	Description types.String `tfsdk:"description"`
 	Members     types.Set    `tfsdk:"members"`
+	UnixGID     types.Int64  `tfsdk:"unix_gid"`
 }
 
 func (r *groupResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -39,24 +40,7 @@ func (r *groupResource) Metadata(_ context.Context, req resource.MetadataRequest
 
 func (r *groupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: `Manages a Kanidm group.
-
-Groups are used to organize users and service accounts, and control access to resources.
-
-## Example Usage
-
-` + "```hcl" + `
-resource "kanidm_group" "developers" {
-  id          = "developers"
-  description = "Development team members"
-
-  members = [
-    kanidm_person.alice.id,
-    kanidm_person.bob.id,
-    kanidm_service_account.ci.id,
-  ]
-}
-` + "```" + ``,
+		MarkdownDescription: "Manages a Kanidm group.\n\nGroups are used to organize users and service accounts, and control access to resources.",
 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
@@ -76,26 +60,15 @@ resource "kanidm_group" "developers" {
 				Optional:    true,
 				ElementType: types.StringType,
 			},
+			"unix_gid": schema.Int64Attribute{
+				MarkdownDescription: "Unix GID number for Linux/PAM group authentication.",
+				Optional:            true,
+			},
 		},
 	}
 }
 
-func (r *groupResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
-	}
 
-	c, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Resource Configure Type",
-			"Expected *client.Client. Please report this issue to the provider developers.",
-		)
-		return
-	}
-
-	r.client = c
-}
 
 func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan groupResourceModel
@@ -159,13 +132,31 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 	plan.ID = types.StringValue(createdGroup.ID)
 	plan.Description = types.StringValue(createdGroup.Description)
 
-	// Always set members as a set (empty if no members)
-	membersSet, diags := types.SetValueFrom(ctx, types.StringType, createdGroup.Members)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
+	// Preserve null when no members were specified and none were returned.
+	if !plan.Members.IsNull() || len(createdGroup.Members) > 0 {
+		membersSet, diags := types.SetValueFrom(ctx, types.StringType, createdGroup.Members)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		plan.Members = membersSet
 	}
-	plan.Members = membersSet
+
+	// Apply Unix extension if unix_gid is set
+	if !plan.UnixGID.IsNull() && !plan.UnixGID.IsUnknown() {
+		gid := plan.UnixGID.ValueInt64()
+		if err := r.client.UnixExtendGroup(ctx, group.ID, &gid); err != nil {
+			resp.Diagnostics.AddError(
+				"Error Setting Unix GID",
+				"Group was created but Unix GID could not be set: "+err.Error(),
+			)
+			return
+		}
+	}
+
+	if createdGroup.UnixGID != nil {
+		plan.UnixGID = types.Int64Value(*createdGroup.UnixGID)
+	}
 
 	tflog.Debug(ctx, "Group created successfully", map[string]any{
 		"id": plan.ID.ValueString(),
@@ -207,13 +198,21 @@ func (r *groupResource) Read(ctx context.Context, req resource.ReadRequest, resp
 	state.ID = types.StringValue(group.ID)
 	state.Description = types.StringValue(group.Description)
 
-	// Always set members as a set (empty if no members)
-	membersSet, diags := types.SetValueFrom(ctx, types.StringType, group.Members)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
+	// Preserve null when no members are configured and none were returned.
+	if !state.Members.IsNull() || len(group.Members) > 0 {
+		membersSet, diags := types.SetValueFrom(ctx, types.StringType, group.Members)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		state.Members = membersSet
 	}
-	state.Members = membersSet
+
+	if group.UnixGID != nil {
+		state.UnixGID = types.Int64Value(*group.UnixGID)
+	} else {
+		state.UnixGID = types.Int64Null()
+	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
@@ -254,6 +253,18 @@ func (r *groupResource) Update(ctx context.Context, req resource.UpdateRequest, 
 		return
 	}
 
+	// Apply Unix extension if unix_gid changed
+	if !plan.UnixGID.Equal(state.UnixGID) && !plan.UnixGID.IsNull() && !plan.UnixGID.IsUnknown() {
+		gid := plan.UnixGID.ValueInt64()
+		if err := r.client.UnixExtendGroup(ctx, plan.ID.ValueString(), &gid); err != nil {
+			resp.Diagnostics.AddError(
+				"Error Updating Unix GID",
+				"Could not update Unix GID: "+err.Error(),
+			)
+			return
+		}
+	}
+
 	// Read back the updated group
 	updatedGroup, err := r.client.GetGroup(ctx, plan.ID.ValueString())
 	if err != nil {
@@ -268,13 +279,21 @@ func (r *groupResource) Update(ctx context.Context, req resource.UpdateRequest, 
 	plan.ID = types.StringValue(updatedGroup.ID)
 	plan.Description = types.StringValue(updatedGroup.Description)
 
-	// Always set members as a set (empty if no members)
-	membersSet, diags := types.SetValueFrom(ctx, types.StringType, updatedGroup.Members)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
+	// Preserve null when no members are configured and none were returned.
+	if !plan.Members.IsNull() || len(updatedGroup.Members) > 0 {
+		membersSet, diags := types.SetValueFrom(ctx, types.StringType, updatedGroup.Members)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		plan.Members = membersSet
 	}
-	plan.Members = membersSet
+
+	if updatedGroup.UnixGID != nil {
+		plan.UnixGID = types.Int64Value(*updatedGroup.UnixGID)
+	} else {
+		plan.UnixGID = types.Int64Null()
+	}
 
 	tflog.Debug(ctx, "Group updated successfully", map[string]any{
 		"id": plan.ID.ValueString(),

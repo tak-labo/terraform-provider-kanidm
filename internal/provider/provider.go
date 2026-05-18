@@ -11,7 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/ssoriche/terraform-provider-kanidm/internal/client"
+	"github.com/tak-labo/terraform-provider-kanidm/internal/client"
 )
 
 // Ensure the implementation satisfies the provider.Provider interface
@@ -24,8 +24,9 @@ type kanidmProvider struct {
 
 // kanidmProviderModel describes the provider data model
 type kanidmProviderModel struct {
-	URL   types.String `tfsdk:"url"`
-	Token types.String `tfsdk:"token"`
+	URL      types.String `tfsdk:"url"`
+	Token    types.String `tfsdk:"token"`
+	Insecure types.Bool   `tfsdk:"insecure"`
 }
 
 // New creates a new provider instance
@@ -46,7 +47,7 @@ func (p *kanidmProvider) Metadata(_ context.Context, _ provider.MetadataRequest,
 // Schema defines the provider-level schema for configuration data
 func (p *kanidmProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Terraform provider for managing Kanidm identity resources.",
+		Description: "OpenTofu provider for managing Kanidm identity resources.",
 		Attributes: map[string]schema.Attribute{
 			"url": schema.StringAttribute{
 				Description: "Kanidm server URL. May also be provided via KANIDM_URL environment variable.",
@@ -56,6 +57,10 @@ func (p *kanidmProvider) Schema(_ context.Context, _ provider.SchemaRequest, res
 				Description: "Kanidm API token for authentication. May also be provided via KANIDM_TOKEN environment variable.",
 				Optional:    true,
 				Sensitive:   true,
+			},
+			"insecure": schema.BoolAttribute{
+				Description: "Skip TLS certificate verification. Use only for testing with self-signed certificates.",
+				Optional:    true,
 			},
 		},
 	}
@@ -112,7 +117,14 @@ func (p *kanidmProvider) Configure(ctx context.Context, req provider.ConfigureRe
 		"url": url,
 	})
 
-	apiClient := client.NewClient(url, token)
+	opts := []client.ClientOption{}
+	if !config.Insecure.IsNull() && config.Insecure.ValueBool() {
+		opts = append(opts, client.WithInsecureTLS())
+	} else if os.Getenv("KANIDM_INSECURE") == "true" {
+		opts = append(opts, client.WithInsecureTLS())
+	}
+
+	apiClient := client.NewClient(url, token, opts...)
 
 	// Make the client available to data sources and resources
 	resp.DataSourceData = apiClient
@@ -126,7 +138,10 @@ func (p *kanidmProvider) Configure(ctx context.Context, req provider.ConfigureRe
 // DataSources defines the data sources implemented in the provider
 func (p *kanidmProvider) DataSources(_ context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
-		// Data sources will be implemented later
+		NewPersonDataSource,
+		NewGroupDataSource,
+		NewServiceAccountDataSource,
+		NewOAuth2BasicDataSource,
 	}
 }
 

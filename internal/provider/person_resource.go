@@ -13,7 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/ssoriche/terraform-provider-kanidm/internal/client"
+	"github.com/tak-labo/terraform-provider-kanidm/internal/client"
 )
 
 // Ensure the implementation satisfies the required interfaces
@@ -29,7 +29,7 @@ func NewPersonResource() resource.Resource {
 
 // personResource is the resource implementation
 type personResource struct {
-	client *client.Client
+	resourceWithClient
 }
 
 // personResourceModel describes the resource data model
@@ -37,10 +37,13 @@ type personResourceModel struct {
 	ID                           types.String `tfsdk:"id"`
 	DisplayName                  types.String `tfsdk:"displayname"`
 	Mail                         types.List   `tfsdk:"mail"`
+	LegalName                    types.String `tfsdk:"legalname"`
 	Password                     types.String `tfsdk:"password"`
 	GenerateCredentialResetToken types.Bool   `tfsdk:"generate_credential_reset_token"`
 	CredentialResetToken         types.String `tfsdk:"credential_reset_token"`
 	CredentialResetTokenTTL      types.Int64  `tfsdk:"credential_reset_token_ttl"`
+	UnixGID                      types.Int64  `tfsdk:"unix_gid"`
+	UnixShell                    types.String `tfsdk:"unix_shell"`
 }
 
 // Metadata returns the resource type name
@@ -129,26 +132,20 @@ The user can then visit the Kanidm web UI with the token to set up passkeys or p
 				Computed:            true,
 				Default:             int64default.StaticInt64(3600),
 			},
+			"legalname": schema.StringAttribute{
+				MarkdownDescription: "Legal name of the person (full legal name as it appears on official documents).",
+				Optional:            true,
+			},
+			"unix_gid": schema.Int64Attribute{
+				MarkdownDescription: "Unix GID number for Linux/PAM authentication. Enables Unix account integration.",
+				Optional:            true,
+			},
+			"unix_shell": schema.StringAttribute{
+				MarkdownDescription: "Login shell for Unix/PAM authentication (e.g. `/bin/bash`). Requires `unix_gid` to be set.",
+				Optional:            true,
+			},
 		},
 	}
-}
-
-// Configure adds the provider configured client to the resource
-func (r *personResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
-	}
-
-	c, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Resource Configure Type",
-			"Expected *client.Client. Please report this issue to the provider developers.",
-		)
-		return
-	}
-
-	r.client = c
 }
 
 // Create creates the resource and sets the initial Terraform state
@@ -212,23 +209,45 @@ func (r *personResource) Create(ctx context.Context, req resource.CreateRequest,
 		plan.CredentialResetToken = types.StringValue(token)
 	}
 
-	// Update mail if provided
+	// Update mail and legalname if provided
+	var mailAddrs []string
 	if !plan.Mail.IsNull() && !plan.Mail.IsUnknown() {
-		var mailAddrs []string
 		resp.Diagnostics.Append(plan.Mail.ElementsAs(ctx, &mailAddrs, false)...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
+	}
 
-		if len(mailAddrs) > 0 {
-			tflog.Debug(ctx, "Updating mail addresses for person")
-			if err := r.client.UpdatePerson(ctx, person.ID, "", mailAddrs); err != nil {
-				resp.Diagnostics.AddError(
-					"Error Updating Mail",
-					"Person was created but mail addresses could not be set: "+err.Error(),
-				)
-				return
-			}
+	var legalName *string
+	if !plan.LegalName.IsNull() && !plan.LegalName.IsUnknown() {
+		v := plan.LegalName.ValueString()
+		legalName = &v
+	}
+
+	if len(mailAddrs) > 0 || legalName != nil {
+		if err := r.client.UpdatePerson(ctx, person.ID, "", mailAddrs, legalName); err != nil {
+			resp.Diagnostics.AddError(
+				"Error Updating Person Attributes",
+				"Person was created but attributes could not be set: "+err.Error(),
+			)
+			return
+		}
+	}
+
+	// Apply Unix extension if unix_gid is set
+	if !plan.UnixGID.IsNull() && !plan.UnixGID.IsUnknown() {
+		gid := plan.UnixGID.ValueInt64()
+		var shell *string
+		if !plan.UnixShell.IsNull() && !plan.UnixShell.IsUnknown() {
+			v := plan.UnixShell.ValueString()
+			shell = &v
+		}
+		if err := r.client.UnixExtendPerson(ctx, person.ID, &gid, shell); err != nil {
+			resp.Diagnostics.AddError(
+				"Error Setting Unix Attributes",
+				"Person was created but Unix attributes could not be set: "+err.Error(),
+			)
+			return
 		}
 	}
 
@@ -253,6 +272,17 @@ func (r *personResource) Create(ctx context.Context, req resource.CreateRequest,
 			return
 		}
 		plan.Mail = mailList
+	}
+
+	if createdPerson.LegalName != "" {
+		plan.LegalName = types.StringValue(createdPerson.LegalName)
+	}
+
+	if createdPerson.UnixGID != nil {
+		plan.UnixGID = types.Int64Value(*createdPerson.UnixGID)
+	}
+	if createdPerson.UnixShell != "" {
+		plan.UnixShell = types.StringValue(createdPerson.UnixShell)
 	}
 
 	// Password is write-only, keep the planned value but don't try to read it back
@@ -321,6 +351,24 @@ func (r *personResource) Read(ctx context.Context, req resource.ReadRequest, res
 		state.Mail = types.ListNull(types.StringType)
 	}
 
+	if person.LegalName != "" {
+		state.LegalName = types.StringValue(person.LegalName)
+	} else {
+		state.LegalName = types.StringNull()
+	}
+
+	if person.UnixGID != nil {
+		state.UnixGID = types.Int64Value(*person.UnixGID)
+	} else {
+		state.UnixGID = types.Int64Null()
+	}
+
+	if person.UnixShell != "" {
+		state.UnixShell = types.StringValue(person.UnixShell)
+	} else {
+		state.UnixShell = types.StringNull()
+	}
+
 	// Password is write-only and not readable from API, preserve existing state value
 	// credential_reset_token fields should use defaults when not explicitly set
 	if state.GenerateCredentialResetToken.IsNull() || state.GenerateCredentialResetToken.IsUnknown() {
@@ -360,8 +408,14 @@ func (r *personResource) Update(ctx context.Context, req resource.UpdateRequest,
 		}
 	}
 
-	// Update person attributes (displayname and mail)
-	if err := r.client.UpdatePerson(ctx, plan.ID.ValueString(), plan.DisplayName.ValueString(), mailAddrs); err != nil {
+	var legalName *string
+	if !plan.LegalName.IsNull() && !plan.LegalName.IsUnknown() {
+		v := plan.LegalName.ValueString()
+		legalName = &v
+	}
+
+	// Update person attributes (displayname, mail, legalname)
+	if err := r.client.UpdatePerson(ctx, plan.ID.ValueString(), plan.DisplayName.ValueString(), mailAddrs, legalName); err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Person",
 			"Could not update person: "+err.Error(),
@@ -378,6 +432,25 @@ func (r *personResource) Update(ctx context.Context, req resource.UpdateRequest,
 				"Person was updated but password could not be changed: "+err.Error(),
 			)
 			return
+		}
+	}
+
+	// Apply Unix extension if unix_gid changed
+	if !plan.UnixGID.Equal(state.UnixGID) || !plan.UnixShell.Equal(state.UnixShell) {
+		if !plan.UnixGID.IsNull() && !plan.UnixGID.IsUnknown() {
+			gid := plan.UnixGID.ValueInt64()
+			var shell *string
+			if !plan.UnixShell.IsNull() && !plan.UnixShell.IsUnknown() {
+				v := plan.UnixShell.ValueString()
+				shell = &v
+			}
+			if err := r.client.UnixExtendPerson(ctx, plan.ID.ValueString(), &gid, shell); err != nil {
+				resp.Diagnostics.AddError(
+					"Error Updating Unix Attributes",
+					"Could not update Unix attributes: "+err.Error(),
+				)
+				return
+			}
 		}
 	}
 
@@ -419,6 +492,24 @@ func (r *personResource) Update(ctx context.Context, req resource.UpdateRequest,
 		plan.Mail = mailList
 	} else {
 		plan.Mail = types.ListNull(types.StringType)
+	}
+
+	if updatedPerson.LegalName != "" {
+		plan.LegalName = types.StringValue(updatedPerson.LegalName)
+	} else {
+		plan.LegalName = types.StringNull()
+	}
+
+	if updatedPerson.UnixGID != nil {
+		plan.UnixGID = types.Int64Value(*updatedPerson.UnixGID)
+	} else {
+		plan.UnixGID = types.Int64Null()
+	}
+
+	if updatedPerson.UnixShell != "" {
+		plan.UnixShell = types.StringValue(updatedPerson.UnixShell)
+	} else {
+		plan.UnixShell = types.StringNull()
 	}
 
 	// Ensure credential_reset_token fields are properly set

@@ -6,7 +6,7 @@ import (
 	"log"
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
-	"github.com/ssoriche/terraform-provider-kanidm/internal/provider"
+	"github.com/tak-labo/terraform-provider-kanidm/internal/provider"
 )
 
 // version is set via ldflags during build
@@ -19,7 +19,7 @@ func main() {
 	flag.Parse()
 
 	opts := providerserver.ServeOpts{
-		Address: "registry.terraform.io/ssoriche/kanidm",
+		Address: "registry.opentofu.org/tak-labo/kanidm",
 		Debug:   debug,
 	}
 

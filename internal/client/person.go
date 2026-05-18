@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"fmt"
+	"strconv"
 )
 
 // Person represents a Kanidm person account
@@ -10,6 +11,9 @@ type Person struct {
 	ID          string
 	DisplayName string
 	Mail        []string
+	LegalName   string
+	UnixGID     *int64
+	UnixShell   string
 }
 
 // CreatePerson creates a new person account
@@ -44,15 +48,25 @@ func (c *Client) GetPerson(ctx context.Context, id string) (*Person, error) {
 		return nil, err
 	}
 
-	return &Person{
+	p := &Person{
 		ID:          entry.GetString("name"),
 		DisplayName: entry.GetString("displayname"),
 		Mail:        entry.GetStringSlice("mail"),
-	}, nil
+		LegalName:   entry.GetString("legalname"),
+		UnixShell:   entry.GetString("loginshell"),
+	}
+
+	if gidStr := entry.GetString("gidnumber"); gidStr != "" {
+		if gid, err := strconv.ParseInt(gidStr, 10, 64); err == nil {
+			p.UnixGID = &gid
+		}
+	}
+
+	return p, nil
 }
 
 // UpdatePerson updates a person account
-func (c *Client) UpdatePerson(ctx context.Context, id string, displayName string, mail []string) error {
+func (c *Client) UpdatePerson(ctx context.Context, id string, displayName string, mail []string, legalName *string) error {
 	attrs := make(map[string]any)
 
 	if displayName != "" {
@@ -61,6 +75,10 @@ func (c *Client) UpdatePerson(ctx context.Context, id string, displayName string
 
 	if mail != nil {
 		attrs["mail"] = mail
+	}
+
+	if legalName != nil {
+		attrs["legalname"] = []string{*legalName}
 	}
 
 	req := NewUpdateRequest(attrs)
@@ -96,6 +114,26 @@ func (c *Client) SetPersonPassword(ctx context.Context, id, password string) err
 	resp, err := c.doRequest(ctx, "POST", fmt.Sprintf("/v1/person/%s/_credential/_update_intent", id), req)
 	if err != nil {
 		return fmt.Errorf("set person password: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	return nil
+}
+
+// UnixExtendPerson adds Unix attributes (gidnumber, loginshell) to a person account.
+// Must be called after CreatePerson to enable Unix/PAM authentication.
+func (c *Client) UnixExtendPerson(ctx context.Context, id string, gid *int64, shell *string) error {
+	req := make(map[string]any)
+	if gid != nil {
+		req["gidnumber"] = *gid
+	}
+	if shell != nil {
+		req["shell"] = *shell
+	}
+
+	resp, err := c.doRequest(ctx, "POST", fmt.Sprintf("/v1/person/%s/_unix", id), req)
+	if err != nil {
+		return fmt.Errorf("unix extend person: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 

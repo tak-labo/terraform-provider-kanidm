@@ -1,0 +1,46 @@
+services:
+  kanidm:
+    image: docker.io/kanidm/server:latest
+    container_name: kanidm-test
+    ports:
+      - "8443:8443"
+    volumes:
+      - kanidm-data:/data
+      - ./testdata/kanidm/cert.pem:/data/cert.pem:ro
+      - ./testdata/kanidm/key.pem:/data/key.pem:ro
+    environment:
+      - KANIDM_DOMAIN=kanidm
+      - KANIDM_ORIGIN=https://kanidm:8443
+      - KANIDM_TLS_CHAIN=/data/cert.pem
+      - KANIDM_TLS_KEY=/data/key.pem
+      - KANIDM_DB_PATH=/data/kanidm.db
+      - KANIDM_BINDADDRESS=0.0.0.0:8443
+      - KANIDM_LOG_LEVEL=info
+
+  test:
+    image: golang:1.24
+    container_name: kanidm-test-runner
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+      - go-cache:/root/go
+    environment:
+      - KANIDM_URL=https://kanidm:8443
+      - TF_ACC=1
+      - TF_ACC_PROVIDER_HOST=registry.opentofu.org
+      - GOFLAGS=-count=1
+    depends_on:
+      - kanidm
+    command: >
+      bash -c "
+        echo 'Waiting for Kanidm...' &&
+        until curl -fsk https://kanidm:8443/status > /dev/null 2>&1; do sleep 2; done &&
+        echo 'Kanidm is ready.' &&
+        go test -v -timeout 30m ./internal/provider/
+      "
+    profiles:
+      - test
+
+volumes:
+  kanidm-data:
+  go-cache:

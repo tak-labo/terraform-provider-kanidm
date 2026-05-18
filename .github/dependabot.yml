@@ -7,10 +7,10 @@ updates:
       interval: "weekly"
       day: "monday"
       time: "09:00"
-      timezone: "America/New_York"
+      timezone: "Asia/Tokyo"
     open-pull-requests-limit: 10
     reviewers:
-      - "ssoriche"
+      - "tak-labo"
     commit-message:
       prefix: "chore(deps)"
       include: "scope"
@@ -38,10 +38,10 @@ updates:
       interval: "weekly"
       day: "monday"
       time: "09:00"
-      timezone: "America/New_York"
+      timezone: "Asia/Tokyo"
     open-pull-requests-limit: 5
     reviewers:
-      - "ssoriche"
+      - "tak-labo"
     commit-message:
       prefix: "chore(ci)"
       include: "scope"

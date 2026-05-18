@@ -5,10 +5,9 @@ version: 2
 
 before:
   hooks:
-    # Ensure dependencies are tidy
     - go mod tidy
-    # Format and lint code
     - go fmt ./...
+    - go generate ./...
 
 builds:
   - id: terraform-provider-kanidm
@@ -53,17 +52,16 @@ checksum:
   algorithm: sha256
 
 signs:
-  - cmd: ssh-keygen
+  - cmd: gpg
     artifacts: checksum
     args:
-      - "-Y"
-      - "sign"
-      - "-f"
-      - "{{ .Env.SSH_SIGNING_KEY_FILE }}"
-      - "-n"
-      - "file"
+      - "--batch"
+      - "--local-user"
+      - "{{ .Env.GPG_FINGERPRINT }}"
+      - "--output"
+      - "${signature}"
+      - "--detach-sign"
       - "${artifact}"
-    signature: "${artifact}.sig"
 
 release:
   draft: false
@@ -76,11 +74,11 @@ release:
     
     **Release Date:** {{ .Date }}
     
-    For usage instructions, see the [README](https://github.com/ssoriche/terraform-provider-kanidm#readme).
+    For usage instructions, see the [README](https://github.com/tak-labo/terraform-provider-kanidm#readme).
   footer: |
     ## Installation
     
-    This release is published to the [Terraform Registry](https://registry.terraform.io/providers/ssoriche/kanidm).
+    This release is published to the [OpenTofu Registry](https://search.opentofu.org/provider/tak-labo/kanidm).
     
     To use this provider:
     
@@ -88,7 +86,7 @@ release:
     terraform {
       required_providers {
         kanidm = {
-          source  = "ssoriche/kanidm"
+          source  = "tak-labo/kanidm"
           version = "~> {{ .Major }}.{{ .Minor }}"
         }
       }
@@ -97,7 +95,7 @@ release:
     
     ## Checksums
     
-    All release artifacts are checksummed and SSH-signed for verification.
+    All release artifacts are checksummed and GPG-signed for verification.
 
 changelog:
   use: github
@@ -124,8 +122,6 @@ changelog:
       - '^chore:'
       - '^ci:'
 
-# Terraform Registry manifest
-# This is required for provider publication
 metadata:
   mod_timestamp: '{{ .CommitTimestamp }}'
 

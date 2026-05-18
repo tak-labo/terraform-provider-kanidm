@@ -35,7 +35,7 @@ resource "kanidm_person" "charlie" {
 }
 
 # Example: Imported existing person account
-# Import command: terraform import kanidm_person.existing_user username
+# Import command: tofu import kanidm_person.existing_user username
 resource "kanidm_person" "existing_user" {
   id          = "existing"
   displayname = "Existing User"

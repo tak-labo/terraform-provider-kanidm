@@ -7,6 +7,7 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -48,7 +49,7 @@ jobs:
         run: go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           files: ./coverage.txt
           flags: unittests
@@ -113,3 +114,53 @@ jobs:
         run: |
           go mod tidy
           git diff --exit-code go.mod go.sum
+
+  acceptance:
+    name: Acceptance Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: Generate TLS certificate
+        run: |
+          mkdir -p testdata/kanidm
+          openssl req -x509 -newkey rsa:2048 -nodes \
+            -keyout testdata/kanidm/key.pem \
+            -out testdata/kanidm/cert.pem \
+            -days 1 \
+            -subj "/CN=localhost" \
+            -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
+
+      - name: Start Kanidm
+        run: docker compose up -d
+
+      - name: Wait for Kanidm
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsk https://localhost:8443/status > /dev/null 2>&1; then
+              echo "Kanidm ready"; break
+            fi
+            [ "$i" -eq 30 ] && echo "Timeout" && exit 1
+            sleep 2
+          done
+
+      - name: Initialize Kanidm
+        run: bash scripts/setup-kanidm.sh
+
+      - name: Run acceptance tests
+        run: |
+          source .env.test
+          TF_ACC=1 TF_ACC_PROVIDER_HOST=registry.opentofu.org \
+          go test -v -timeout 30m ./internal/provider/
+
+      - name: Stop Kanidm
+        if: always()
+        run: docker compose down -v

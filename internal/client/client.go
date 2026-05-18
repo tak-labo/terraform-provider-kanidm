@@ -3,6 +3,7 @@ package client
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,6 +36,15 @@ type ClientOption func(*Client)
 func WithHTTPClient(client *http.Client) ClientOption {
 	return func(c *Client) {
 		c.httpClient = client
+	}
+}
+
+// WithInsecureTLS disables TLS certificate verification. Use only in test environments.
+func WithInsecureTLS() ClientOption {
+	return func(c *Client) {
+		c.httpClient.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
+		}
 	}
 }
 

@@ -1,4 +1,4 @@
-.PHONY: default build install test testacc generate clean fmt lint help
+.PHONY: default build install test testacc kanidm-up kanidm-down generate clean fmt lint help
 
 default: build
 
@@ -6,18 +6,42 @@ default: build
 build:
 	go build -o terraform-provider-kanidm
 
-# Install the provider locally for testing
+# Install the provider locally for testing (OpenTofu dev_override)
 install: build
-	mkdir -p ~/.terraform.d/plugins/registry.terraform.io/ssoriche/kanidm/0.1.0/darwin_arm64/
-	cp terraform-provider-kanidm ~/.terraform.d/plugins/registry.terraform.io/ssoriche/kanidm/0.1.0/darwin_arm64/
+	mkdir -p ~/.local/share/opentofu/plugins/registry.opentofu.org/tak-labo/kanidm/0.1.0/darwin_arm64/
+	cp terraform-provider-kanidm ~/.local/share/opentofu/plugins/registry.opentofu.org/tak-labo/kanidm/0.1.0/darwin_arm64/
 
 # Run unit tests
 test:
 	go test -v ./...
 
-# Run acceptance tests
+# Run acceptance tests from host (requires source .env.test first, or set KANIDM_URL/KANIDM_TOKEN)
 testacc:
-	TF_ACC=1 go test -v -timeout 30m ./internal/provider/
+	TF_ACC=1 TF_ACC_PROVIDER_HOST=registry.opentofu.org TF_ACC_PROVIDER_NAMESPACE=tak-labo go test -v -timeout 30m ./internal/provider/
+
+# Run acceptance tests inside Docker (matches production: separate kanidm + test containers)
+testacc-docker:
+	docker compose --profile test up --abort-on-container-exit --exit-code-from test
+
+# Start Kanidm in Docker and initialize for acceptance testing
+kanidm-up:
+	@mkdir -p testdata/kanidm
+	@if [ ! -f testdata/kanidm/cert.pem ]; then \
+		echo "Generating TLS certificate..."; \
+		openssl req -x509 -newkey rsa:2048 -nodes \
+			-keyout testdata/kanidm/key.pem \
+			-out testdata/kanidm/cert.pem \
+			-days 365 \
+			-subj "/CN=localhost" \
+			-addext "subjectAltName=DNS:localhost,IP:127.0.0.1" 2>/dev/null; \
+	fi
+	docker compose up -d kanidm
+	./scripts/setup-kanidm.sh
+
+# Stop Kanidm and remove volumes
+kanidm-down:
+	docker compose down -v
+	rm -f testdata/kanidm/cert.pem testdata/kanidm/key.pem .env.test
 
 # Generate provider code from OpenAPI schema
 generate:

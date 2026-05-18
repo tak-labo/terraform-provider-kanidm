@@ -3,6 +3,8 @@ package client
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 )
 
 // Group represents a Kanidm group
@@ -10,6 +12,7 @@ type Group struct {
 	ID          string
 	Description string
 	Members     []string
+	UnixGID     *int64
 }
 
 // CreateGroup creates a new group
@@ -48,17 +51,47 @@ func (c *Client) GetGroup(ctx context.Context, id string) (*Group, error) {
 		return nil, err
 	}
 
-	// Ensure members is never nil
-	members := entry.GetStringSlice("member")
-	if members == nil {
-		members = []string{}
+	// Normalize member SPNs (e.g. "user@domain") to just the username part,
+	// since kanidm returns SPNs but the provider accepts plain names.
+	rawMembers := entry.GetStringSlice("member")
+	members := make([]string, len(rawMembers))
+	for i, m := range rawMembers {
+		if before, _, found := strings.Cut(m, "@"); found {
+			members[i] = before
+		} else {
+			members[i] = m
+		}
 	}
 
-	return &Group{
+	g := &Group{
 		ID:          entry.GetString("name"),
 		Description: entry.GetString("description"),
 		Members:     members,
-	}, nil
+	}
+
+	if gidStr := entry.GetString("gidnumber"); gidStr != "" {
+		if gid, err := strconv.ParseInt(gidStr, 10, 64); err == nil {
+			g.UnixGID = &gid
+		}
+	}
+
+	return g, nil
+}
+
+// UnixExtendGroup adds Unix attributes (gidnumber) to a group.
+func (c *Client) UnixExtendGroup(ctx context.Context, id string, gid *int64) error {
+	req := make(map[string]any)
+	if gid != nil {
+		req["gidnumber"] = *gid
+	}
+
+	resp, err := c.doRequest(ctx, "POST", fmt.Sprintf("/v1/group/%s/_unix", id), req)
+	if err != nil {
+		return fmt.Errorf("unix extend group: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	return nil
 }
 
 // UpdateGroup updates a group

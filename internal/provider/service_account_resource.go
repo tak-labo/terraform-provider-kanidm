@@ -11,7 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/ssoriche/terraform-provider-kanidm/internal/client"
+	"github.com/tak-labo/terraform-provider-kanidm/internal/client"
 )
 
 var (
@@ -24,7 +24,7 @@ func NewServiceAccountResource() resource.Resource {
 }
 
 type serviceAccountResource struct {
-	client *client.Client
+	resourceWithClient
 }
 
 type serviceAccountResourceModel struct {
@@ -40,28 +40,11 @@ func (r *serviceAccountResource) Metadata(_ context.Context, req resource.Metada
 
 func (r *serviceAccountResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: `Manages a Kanidm service account.
-
-Service accounts are used for automated systems and applications to authenticate with Kanidm.
-An API token is automatically generated on creation and can be used for authentication.
-
-## Example Usage
-
-` + "```hcl" + `
-resource "kanidm_service_account" "terraform" {
-  id          = "terraform-automation"
-  displayname = "Terraform Automation Account"
-}
-
-# Store the API token in 1Password or another secret manager
-output "terraform_token" {
-  value     = kanidm_service_account.terraform.api_token
-  sensitive = true
-}
-` + "```" + `
-
-**Important:** The API token is only available during creation and cannot be recovered later.
-Store it securely immediately after creation.`,
+		MarkdownDescription: "Manages a Kanidm service account.\n\n" +
+			"Service accounts are used for automated systems and applications to authenticate with Kanidm. " +
+			"An API token is automatically generated on creation.\n\n" +
+			"**Important:** The API token is only available during creation and cannot be recovered later. " +
+			"Store it securely immediately after creation.",
 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
@@ -84,29 +67,12 @@ Store it securely immediately after creation.`,
 			"entry_managed_by": schema.SetAttribute{
 				MarkdownDescription: "Set of account or group IDs that can manage this service account. " +
 					"This allows delegated administration, including API token generation. " +
-					"**Required by Kanidm.** Use fully-qualified names (e.g., `terraform-admin@idm.s8i.ca`).",
+					"**Required by Kanidm.** Use fully-qualified names (e.g., `terraform-admin@idm.example.com`).",
 				Required:    true,
 				ElementType: types.StringType,
 			},
 		},
 	}
-}
-
-func (r *serviceAccountResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
-	}
-
-	c, ok := req.ProviderData.(*client.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Resource Configure Type",
-			"Expected *client.Client. Please report this issue to the provider developers.",
-		)
-		return
-	}
-
-	r.client = c
 }
 
 func (r *serviceAccountResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {

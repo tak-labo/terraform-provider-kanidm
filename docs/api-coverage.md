@@ -1,6 +1,18 @@
 ## API Coverage: 29/85 endpoints (34.1%)
 > Kanidm v1.9.2 · OpenTofu Provider
 
+### Coverage by category
+
+| Category | Implemented | Total | % |
+|---|---|---|---|
+| account | 0 | 8 | ⬜⬜⬜⬜⬜ 0% |
+| group | 6 | 12 | 🟩🟩⬜⬜⬜ 50% |
+| oauth2 | 8 | 16 | 🟩🟩⬜⬜⬜ 50% |
+| other | 0 | 1 | ⬜⬜⬜⬜⬜ 0% |
+| person | 8 | 28 | 🟩⬜⬜⬜⬜ 29% |
+| service_account | 7 | 20 | 🟩⬜⬜⬜⬜ 35% |
+
+---
 
 ### account (0/8 · 0%)
 

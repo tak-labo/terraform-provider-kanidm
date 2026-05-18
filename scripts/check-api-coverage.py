@@ -59,27 +59,19 @@ def main():
         cat = path.split("/")[2] if path.startswith("/v1/") else "other"
         categories.setdefault(cat, []).append((method, path))
 
-    print("### Coverage by category")
-    print()
-    print("| Category | Implemented | Total | % |")
-    print("|---|---|---|---|")
     for cat in sorted(categories):
         eps = categories[cat]
         cat_covered = sum(1 for ep in eps if ep in implemented)
         cat_total = len(eps)
         cat_pct = cat_covered / cat_total * 100 if cat_total else 0
-        bar = "🟩" * int(cat_pct / 20) + "⬜" * (5 - int(cat_pct / 20))
-        print(f"| {cat} | {cat_covered} | {cat_total} | {bar} {cat_pct:.0f}% |")
-
-    not_implemented = [(m, p) for m, p in all_endpoints if (m, p) not in implemented]
-    if not_implemented:
         print()
-        print(f"### Not implemented ({len(not_implemented)} endpoints)")
+        print(f"### {cat} ({cat_covered}/{cat_total} · {cat_pct:.0f}%)")
         print()
-        print("| Method | Endpoint |")
-        print("|---|---|")
-        for method, path in not_implemented:
-            print(f"| `{method}` | `{path}` |")
+        print("| | Method | Endpoint |")
+        print("|---|---|---|")
+        for method, path in sorted(eps, key=lambda x: x[1]):
+            status = "✅" if (method, path) in implemented else "❌"
+            print(f"| {status} | `{method}` | `{path}` |")
 
     update_gist(pct)
 

@@ -66,7 +66,16 @@ resource "kanidm_group" "developers" {
 ## Requirements
 
 - [OpenTofu](https://opentofu.org/docs/intro/install/) >= 1.6
-- Kanidm >= 1.9 (developed and tested against **1.10.2**)
+- Kanidm >= 1.9
+
+### Tested Kanidm versions
+
+| Kanidm | Status |
+|--------|--------|
+| 1.10.2 | ✅ Tested |
+| 1.9.4  | ✅ Tested |
+| 1.9.2  | ✅ Tested |
+| < 1.9  | ❓ Unknown |
 
 ## Contributing
 

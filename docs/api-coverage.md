@@ -1,5 +1,5 @@
 ## API Coverage: 29/85 endpoints (34.1%)
-> Kanidm v1.9.2 · OpenTofu Provider
+> Kanidm v1.9.4 · OpenTofu Provider
 
 ### Coverage by category
 

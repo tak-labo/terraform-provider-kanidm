@@ -1,6 +1,6 @@
 services:
   kanidm:
-    image: docker.io/kanidm/server:latest
+    image: docker.io/kanidm/server:1.9.4
     container_name: kanidm-test
     ports:
       - "8443:8443"

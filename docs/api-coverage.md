@@ -1,5 +1,5 @@
-## API Coverage: 29/85 endpoints (34.1%)
-> Kanidm v1.9.4 · OpenTofu Provider
+## API Coverage: 29/86 endpoints (33.7%)
+> Kanidm v1.10.2 · OpenTofu Provider
 
 ### Coverage by category
 
@@ -9,7 +9,7 @@
 | group | 6 | 12 | 🟩🟩⬜⬜⬜ 50% |
 | oauth2 | 8 | 16 | 🟩🟩⬜⬜⬜ 50% |
 | other | 0 | 1 | ⬜⬜⬜⬜⬜ 0% |
-| person | 8 | 28 | 🟩⬜⬜⬜⬜ 29% |
+| person | 8 | 29 | 🟩⬜⬜⬜⬜ 28% |
 | service_account | 7 | 20 | 🟩⬜⬜⬜⬜ 35% |
 
 ---
@@ -71,7 +71,7 @@
 |---|---|---|
 | ❌ | `GET` | `/status` |
 
-### person (8/28 · 29%)
+### person (8/29 · 28%)
 
 | | Method | Endpoint |
 |---|---|---|
@@ -91,6 +91,7 @@
 | ❌ | `GET` | `/v1/person/{id}/_credential/_update` |
 | ✅ | `GET` | `/v1/person/{id}/_credential/_update_intent` |
 | ✅ | `GET` | `/v1/person/{id}/_credential/_update_intent/{ttl}` |
+| ❌ | `POST` | `/v1/person/{id}/_credential/_update_intent_send` |
 | ❌ | `POST` | `/v1/person/{id}/_identify/_user` |
 | ❌ | `GET` | `/v1/person/{id}/_radius` |
 | ❌ | `POST` | `/v1/person/{id}/_radius` |

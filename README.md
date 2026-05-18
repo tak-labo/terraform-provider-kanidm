@@ -65,7 +65,7 @@ resource "kanidm_group" "developers" {
 ## Requirements
 
 - [OpenTofu](https://opentofu.org/docs/intro/install/) >= 1.6
-- Kanidm >= 1.9
+- Kanidm >= 1.9 (developed and tested against **1.9.2**)
 
 ## Contributing
 

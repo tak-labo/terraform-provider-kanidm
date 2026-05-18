@@ -61,6 +61,7 @@ resource "kanidm_group" "developers" {
 - [Getting Started](docs/guides/getting-started.md)
 - [Resource Reference](docs/resources/)
 - [Data Source Reference](docs/data-sources/)
+- [API Coverage](docs/api-coverage.md)
 
 ## Requirements
 

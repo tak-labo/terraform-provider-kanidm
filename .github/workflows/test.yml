@@ -59,7 +59,16 @@ jobs:
           GIST_SECRET: ${{ secrets.GIST_SECRET }}
         run: |
           pip install uv -q
-          uv run --with pyyaml python3 scripts/check-api-coverage.py >> $GITHUB_STEP_SUMMARY
+          uv run --with pyyaml python3 scripts/check-api-coverage.py | tee docs/api-coverage.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Commit API coverage doc
+        if: github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/api-coverage.md
+          git diff --cached --quiet || git commit -m "chore(ci): update API coverage report [skip ci]"
+          git push
 
   build:
     name: Build

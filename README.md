@@ -3,6 +3,7 @@
 OpenTofu provider for [Kanidm](https://github.com/kanidm/kanidm) — a modern, fast identity management platform.
 
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
+[![Test](https://github.com/tak-labo/terraform-provider-kanidm/actions/workflows/test.yml/badge.svg)](https://github.com/tak-labo/terraform-provider-kanidm/actions/workflows/test.yml)
 
 Manage Kanidm identity resources as code: person accounts, service accounts, groups, and OAuth2 clients.
 

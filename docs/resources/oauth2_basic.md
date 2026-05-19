@@ -20,13 +20,14 @@ OAuth2 basic clients are used for server-side applications that can securely sto
 
 ```terraform
 # Example: OAuth2 client for Grafana
+# https://kanidm.github.io/kanidm/stable/integrations/oauth2/examples.html
 resource "kanidm_oauth2_basic" "grafana" {
   name        = "grafana"
   displayname = "Grafana"
   origin      = "https://grafana.example.com"
 
   redirect_uris = [
-    "https://grafana.example.com/login/generic_oauth"
+    "https://grafana.example.com/login/generic_oauth",
   ]
 
   scope_map {
@@ -40,26 +41,25 @@ resource "kanidm_oauth2_basic" "grafana" {
   }
 }
 
-# Store the client secret securely
 output "grafana_client_secret" {
   description = "OAuth2 client secret for Grafana"
   value       = kanidm_oauth2_basic.grafana.client_secret
   sensitive   = true
 }
 
-# Example: OAuth2 client for Authentik
-resource "kanidm_oauth2_basic" "authentik" {
-  name        = "authentik"
-  displayname = "Authentik SSO"
-  origin      = "https://auth.example.com"
+# Example: OAuth2 client for Gitea
+resource "kanidm_oauth2_basic" "gitea" {
+  name        = "gitea"
+  displayname = "Gitea"
+  origin      = "https://gitea.example.com"
 
   redirect_uris = [
-    "https://auth.example.com/source/oauth/callback/kanidm/"
+    "https://gitea.example.com/user/oauth2/kanidm/callback",
   ]
 
   scope_map {
-    group  = "all-users"
-    scopes = ["openid", "profile", "email"]
+    group  = "developers"
+    scopes = ["email", "openid", "profile", "groups"]
   }
 }
 
@@ -70,45 +70,24 @@ resource "kanidm_oauth2_basic" "gitlab" {
   origin      = "https://gitlab.example.com"
 
   redirect_uris = [
-    "https://gitlab.example.com/users/auth/openid_connect/callback"
+    "https://gitlab.example.com/users/auth/openid_connect/callback",
   ]
 
   scope_map {
     group  = "developers"
-    scopes = ["openid", "profile", "email", "groups"]
-  }
-
-  scope_map {
-    group  = "project-managers"
     scopes = ["openid", "profile", "email"]
   }
 }
 
-# Example: Simple OAuth2 client without scope maps
+# Example: Simple OAuth2 client (no scope maps)
 resource "kanidm_oauth2_basic" "simple_app" {
-  name        = "simple-app"
-  displayname = "Simple Application"
+  name        = "my-app"
+  displayname = "My Application"
   origin      = "https://app.example.com"
 
   redirect_uris = [
-    "https://app.example.com/callback"
+    "https://app.example.com/callback",
   ]
-}
-
-# Example: Imported existing OAuth2 client
-# Import command: tofu import kanidm_oauth2_basic.existing client_name
-# Note: Client secret will be automatically retrieved from Kanidm after import
-resource "kanidm_oauth2_basic" "existing" {
-  name        = "existing-client"
-  displayname = "Existing OAuth2 Client"
-  origin      = "https://existing.example.com"
-}
-
-# The client secret is available even for imported clients
-output "existing_client_secret" {
-  description = "OAuth2 client secret for imported client"
-  value       = kanidm_oauth2_basic.existing.client_secret
-  sensitive   = true
 }
 ```
 
@@ -125,7 +104,7 @@ output "existing_client_secret" {
 
 - `allow_insecure_client_disable_pkce` (Boolean) Allow this client to disable PKCE. Use only for clients that do not support PKCE (e.g. Omni).
 - `jwt_legacy_crypto_enable` (Boolean) Enable legacy RS256 JWT signing. Use for clients that do not support ES256 (e.g. python-social-auth).
-- `prefer_short_username` (Boolean) Return short username (e.g. 'nagafuchi') instead of SPN (e.g. 'nagafuchi@idm.cosmo.cloud') in the preferred_username OIDC claim.
+- `prefer_short_username` (Boolean) Return short username (e.g. 'alice') instead of SPN (e.g. 'alice@idm.example.com') in the preferred_username OIDC claim.
 - `redirect_uris` (List of String) List of allowed redirect URIs for OAuth2 callbacks.
 - `scope_map` (Block Set) Scope mappings that define which OAuth2 scopes are granted to members of specific groups. Each scope_map block links a Kanidm group to a set of OAuth2 scopes. (see [below for nested schema](#nestedblock--scope_map))
 

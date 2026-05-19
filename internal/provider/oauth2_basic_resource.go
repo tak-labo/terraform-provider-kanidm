@@ -94,7 +94,7 @@ func (r *oauth2BasicResource) Schema(_ context.Context, _ resource.SchemaRequest
 				Computed:            true,
 			},
 			"prefer_short_username": schema.BoolAttribute{
-				MarkdownDescription: "Return short username (e.g. 'nagafuchi') instead of SPN (e.g. 'nagafuchi@idm.cosmo.cloud') in the preferred_username OIDC claim.",
+				MarkdownDescription: "Return short username (e.g. 'alice') instead of SPN (e.g. 'alice@idm.example.com') in the preferred_username OIDC claim.",
 				Optional:            true,
 				Computed:            true,
 			},

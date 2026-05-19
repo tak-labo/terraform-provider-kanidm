@@ -37,5 +37,6 @@ provider "kanidm" {}
 
 ### Optional
 
+- `insecure` (Boolean) Skip TLS certificate verification. Use only for testing with self-signed certificates.
 - `token` (String, Sensitive) Kanidm API token for authentication. May also be provided via KANIDM_TOKEN environment variable.
 - `url` (String) Kanidm server URL. May also be provided via KANIDM_URL environment variable.

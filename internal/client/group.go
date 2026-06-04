@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -9,7 +10,8 @@ import (
 
 // Group represents a Kanidm group
 type Group struct {
-	ID          string
+	UUID        string
+	ID          string // name (kept for backward compatibility with group_resource)
 	Description string
 	Members     []string
 	UnixGID     *int64
@@ -63,7 +65,13 @@ func (c *Client) GetGroup(ctx context.Context, id string) (*Group, error) {
 		}
 	}
 
+	uuid := entry.GetString("entryuuid")
+	if uuid == "" {
+		uuid = entry.GetString("uuid")
+	}
+
 	g := &Group{
+		UUID:        uuid,
 		ID:          entry.GetString("name"),
 		Description: entry.GetString("description"),
 		Members:     members,
@@ -130,12 +138,7 @@ func (c *Client) DeleteGroup(ctx context.Context, id string) error {
 
 // AddGroupMembers adds members to a group
 func (c *Client) AddGroupMembers(ctx context.Context, groupID string, memberIDs []string) error {
-	// Use the attribute endpoint to add members
-	req := map[string]any{
-		"attrs": memberIDs,
-	}
-
-	resp, err := c.doRequest(ctx, "POST", fmt.Sprintf("/v1/group/%s/_attr/member", groupID), req)
+	resp, err := c.doRequest(ctx, "POST", fmt.Sprintf("/v1/group/%s/_attr/member", groupID), memberIDs)
 	if err != nil {
 		return fmt.Errorf("add group members: %w", err)
 	}
@@ -146,16 +149,71 @@ func (c *Client) AddGroupMembers(ctx context.Context, groupID string, memberIDs 
 
 // RemoveGroupMembers removes members from a group
 func (c *Client) RemoveGroupMembers(ctx context.Context, groupID string, memberIDs []string) error {
-	// Use the attribute endpoint to remove members
-	req := map[string]any{
-		"attrs": memberIDs,
-	}
-
-	resp, err := c.doRequest(ctx, "DELETE", fmt.Sprintf("/v1/group/%s/_attr/member", groupID), req)
+	resp, err := c.doRequest(ctx, "DELETE", fmt.Sprintf("/v1/group/%s/_attr/member", groupID), memberIDs)
 	if err != nil {
 		return fmt.Errorf("remove group members: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	return nil
+}
+
+// GetGroupAttr retrieves a specific attribute of a group.
+func (c *Client) GetGroupAttr(ctx context.Context, groupID, attrName string) ([]string, error) {
+	resp, err := c.doRequest(ctx, "GET", fmt.Sprintf("/v1/group/%s/_attr/%s", groupID, attrName), nil)
+	if err != nil {
+		return nil, fmt.Errorf("get group attr %s: %w", attrName, err)
+	}
+
+	var vals []string
+	if err := decodeResponse(resp, &vals); err != nil {
+		return nil, err
+	}
+	return vals, nil
+}
+
+// SetGroupAttr sets a specific attribute of a group.
+func (c *Client) SetGroupAttr(ctx context.Context, groupID, attrName string, values []string) error {
+	resp, err := c.doRequest(ctx, "PUT", fmt.Sprintf("/v1/group/%s/_attr/%s", groupID, attrName), values)
+	if err != nil {
+		return fmt.Errorf("set group attr %s: %w", attrName, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	return nil
+}
+
+// DeleteGroupAttr removes a specific attribute from a group.
+func (c *Client) DeleteGroupAttr(ctx context.Context, groupID, attrName string) error {
+	resp, err := c.doRequest(ctx, "DELETE", fmt.Sprintf("/v1/group/%s/_attr/%s", groupID, attrName), nil)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil
+		}
+		return fmt.Errorf("delete group attr %s: %w", attrName, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	return nil
+}
+
+// AddGroupClass adds a class to a group entry.
+func (c *Client) AddGroupClass(ctx context.Context, groupID, className string) error {
+	resp, err := c.doRequest(ctx, "POST", fmt.Sprintf("/v1/group/%s/_attr/class", groupID), []string{className})
+	if err != nil {
+		return fmt.Errorf("add group class %s: %w", className, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	return nil
+}
+
+// RemoveGroupClass removes a class from a group entry.
+func (c *Client) RemoveGroupClass(ctx context.Context, groupID, className string) error {
+	resp, err := c.doRequest(ctx, "DELETE", fmt.Sprintf("/v1/group/%s/_attr/class", groupID), []string{className})
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil
+		}
+		return fmt.Errorf("remove group class %s: %w", className, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
 	return nil
 }

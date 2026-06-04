@@ -1,8 +1,17 @@
 package client
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"fmt"
+	"io"
+	"mime"
+	"mime/multipart"
+	"net/http"
+	"net/textproto"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -277,4 +286,121 @@ func (c *Client) RegenerateOAuth2BasicSecret(ctx context.Context, name string) (
 	}
 
 	return secret, nil
+}
+
+// SetOAuth2SupScopeMap sets a supplemental scope mapping for an OAuth2 client.
+func (c *Client) SetOAuth2SupScopeMap(ctx context.Context, rsName, groupName string, scopes []string) error {
+	resp, err := c.doRequest(ctx, "POST", fmt.Sprintf("/v1/oauth2/%s/_sup_scopemap/%s", rsName, groupName), scopes)
+	if err != nil {
+		return fmt.Errorf("set oauth2 sup scope map: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	return nil
+}
+
+// DeleteOAuth2SupScopeMap removes a supplemental scope mapping for an OAuth2 client.
+func (c *Client) DeleteOAuth2SupScopeMap(ctx context.Context, rsName, groupName string) error {
+	resp, err := c.doRequest(ctx, "DELETE", fmt.Sprintf("/v1/oauth2/%s/_sup_scopemap/%s", rsName, groupName), nil)
+	if err != nil {
+		return fmt.Errorf("delete oauth2 sup scope map: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	return nil
+}
+
+// SetOAuth2ClaimMap sets claim values for a group on an OAuth2 client.
+func (c *Client) SetOAuth2ClaimMap(ctx context.Context, rsName, claimName, groupName string, values []string) error {
+	resp, err := c.doRequest(ctx, "POST", fmt.Sprintf("/v1/oauth2/%s/_claimmap/%s/%s", rsName, claimName, groupName), values)
+	if err != nil {
+		return fmt.Errorf("set oauth2 claim map: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	return nil
+}
+
+// SetOAuth2ClaimMapJoin sets the join strategy for a claim name on an OAuth2 client.
+// join must be one of: "csv", "ssv", "array".
+func (c *Client) SetOAuth2ClaimMapJoin(ctx context.Context, rsName, claimName, join string) error {
+	resp, err := c.doRequest(ctx, "POST", fmt.Sprintf("/v1/oauth2/%s/_claimmap/%s", rsName, claimName), join)
+	if err != nil {
+		return fmt.Errorf("set oauth2 claim map join: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	return nil
+}
+
+// DeleteOAuth2ClaimMap removes claim values for a specific group from an OAuth2 client.
+func (c *Client) DeleteOAuth2ClaimMap(ctx context.Context, rsName, claimName, groupName string) error {
+	resp, err := c.doRequest(ctx, "DELETE", fmt.Sprintf("/v1/oauth2/%s/_claimmap/%s/%s", rsName, claimName, groupName), nil)
+	if err != nil {
+		return fmt.Errorf("delete oauth2 claim map: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	return nil
+}
+
+// UploadOAuth2Image uploads an image file for an OAuth2 client.
+func (c *Client) UploadOAuth2Image(ctx context.Context, rsName, filePath string) error {
+	data, err := os.ReadFile(filePath) //nolint:gosec
+	if err != nil {
+		return fmt.Errorf("read image file: %w", err)
+	}
+
+	contentType := mime.TypeByExtension(strings.ToLower(filepath.Ext(filePath)))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+
+	header := make(textproto.MIMEHeader)
+	header.Set("Content-Disposition", `form-data; name="image"; filename="image"`)
+	header.Set("Content-Type", contentType)
+
+	part, err := mw.CreatePart(header)
+	if err != nil {
+		return fmt.Errorf("create multipart: %w", err)
+	}
+	if _, err := io.Copy(part, bytes.NewReader(data)); err != nil {
+		return fmt.Errorf("write multipart: %w", err)
+	}
+	if err := mw.Close(); err != nil {
+		return fmt.Errorf("close multipart writer: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+fmt.Sprintf("/v1/oauth2/%s/_image", rsName), &buf)
+	if err != nil {
+		return fmt.Errorf("create image upload request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("upload oauth2 image: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	return c.checkResponse(resp)
+}
+
+// DeleteOAuth2Image removes the image from an OAuth2 client.
+func (c *Client) DeleteOAuth2Image(ctx context.Context, rsName string) error {
+	resp, err := c.doRequest(ctx, "DELETE", fmt.Sprintf("/v1/oauth2/%s/_image", rsName), nil)
+	if err != nil {
+		return fmt.Errorf("delete oauth2 image: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	return nil
+}
+
+// HashFileSHA256 computes the SHA-256 hex digest of a file's contents.
+func HashFileSHA256(filePath string) (string, error) {
+	data, err := os.ReadFile(filePath) //nolint:gosec
+	if err != nil {
+		return "", fmt.Errorf("read file: %w", err)
+	}
+	sum := sha256.Sum256(data)
+	return fmt.Sprintf("%x", sum[:]), nil
 }

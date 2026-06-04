@@ -34,7 +34,7 @@ func TestProviderSchema(t *testing.T) {
 func TestProviderResources(t *testing.T) {
 	p := New("test")()
 	resources := p.Resources(context.Background())
-	assert.Len(t, resources, 4, "expected 4 resources: person, service_account, group, oauth2_basic")
+	assert.Len(t, resources, 9, "expected 9 resources: person, service_account, group, group_members, oauth2_basic, oauth2_public, account_policy, application, system_denied_names")
 }
 
 func TestProviderDataSources(t *testing.T) {
